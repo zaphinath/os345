@@ -75,6 +75,8 @@ int P1_shellTask(int argc, char* argv[])
 {
 	int i, found, newArgc;					// # of arguments
 	char** newArgv;							// pointers to arguments
+	static char* argvStrings;
+
 
 	// initialize shell commands
 	commands = P1_init();					// init shell commands
@@ -98,6 +100,12 @@ int P1_shellTask(int argc, char* argv[])
 			// ?? parse command line into argc, argv[] variables
 			// ?? must use malloc for argv storage!
 			static char *sp, *myArgv[MAX_ARGS];
+
+
+			// Allocate space for strings
+			argvStrings = (char*) malloc(sizeof(char) * (strlen(inBuffer) + 1));
+			strcpy(argvStrings, inBuffer);
+			//newArgv = (char**) malloc(sizeof(char*) * MAX_ARGS);
 
 			// init arguments
 			newArgc = 1;
@@ -130,6 +138,9 @@ int P1_shellTask(int argc, char* argv[])
 		if (!found)	printf("\nInvalid command!");
 
 		// ?? free up any malloc'd argv parameters
+		//free(newArgv);
+		free(argvStrings);
+
 		for (i=0; i<INBUF_SIZE; i++) inBuffer[i] = 0;
 	}
 	return 0;						// terminate task
