@@ -41,12 +41,14 @@ extern Semaphore* taskSems[MAX_TASKS];		// task semaphore
 // **********************************************************************
 // create task
 int createTask(char* name,						// task name
-					int (*task)(int, char**),	// task address
-					int priority,				// task priority
-					int argc,					// task argument count
-					char* argv[])				// task argument pointers
+		int (*task)(int, char**),	// task address
+		int priority,				// task priority
+		int argc,					// task argument count
+		char* argv[])				// task argument pointers
 {
 	int tid;
+	int i;
+	char** newArgv;
 
 	// find an open tcb entry slot
 	for (tid = 0; tid < MAX_TASKS; tid++)
@@ -73,7 +75,13 @@ int createTask(char* name,						// task name
 			tcb[tid].argc = argc;			// argument count
 
 			// ?? malloc new argv parameters
-			tcb[tid].argv = argv;			// argument pointers
+			newArgv = (char**) malloc(sizeof(char*) * argc);
+			for (i = 0; i < argc; i++) {
+				newArgv[i] = (char*) malloc(sizeof(char) * (strlen(argv[i]) + 1));
+				strcpy(newArgv[i], argv[i]);
+			}
+
+			tcb[tid].argv = newArgv;			// argument pointers
 
 			tcb[tid].event = 0;				// suspend semaphore
 			tcb[tid].RPT = 0;					// root page table (project 5)

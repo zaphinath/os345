@@ -63,6 +63,12 @@ extern int superMode;						// system mode
 
 // **********************************************************************
 // **********************************************************************
+// global system variables
+
+extern TCB tcb[MAX_TASKS];					// task control block
+
+// **********************************************************************
+// **********************************************************************
 // simulate asynchronous interrupts by polling events during idle loop
 //
 void pollInterrupts(void)
@@ -75,7 +81,7 @@ void pollInterrupts(void)
 	// check for keyboard interrupt
 	if ((inChar = GET_CHAR) > 0)
 	{
-	  keyboard_isr();
+		keyboard_isr();
 	}
 
 	// timer interrupt
@@ -90,6 +96,8 @@ void pollInterrupts(void)
 //
 static void keyboard_isr()
 {
+
+	int i;
 	// assert system mode
 	assert("keyboard_isr Error" && superMode);
 
@@ -98,29 +106,73 @@ static void keyboard_isr()
 	{
 		switch (inChar)
 		{
-			case '\r':
-			case '\n':
-			{
-				inBufIndx = 0;				// EOL, signal line ready
-				semSignal(inBufferReady);	// SIGNAL(inBufferReady)
-				break;
-			}
+		case '\r':
+		case '\n':
+		{
+			inBufIndx = 0;				// EOL, signal line ready
+			semSignal(inBufferReady);	// SIGNAL(inBufferReady)
+			break;
+		}
 
-			case 0x18:						// ^x
-			{
-				inBufIndx = 0;
-				inBuffer[0] = 0;
-				sigSignal(0, mySIGINT);		// interrupt task 0
-				semSignal(inBufferReady);	// SEM_SIGNAL(inBufferReady)
-				break;
-			}
-
-			default:
-			{
-				inBuffer[inBufIndx++] = inChar;
+		// Backspace
+		case 0x7f:
+		{
+			if (inBufIndx > 0) {
+				inBufIndx--;
 				inBuffer[inBufIndx] = 0;
-				printf("%c", inChar);		// echo character
+				printf("\b \b");                // remove last character
 			}
+			break;
+		}
+
+		case 0x18:						// ^x
+		{
+			inBufIndx = 0;
+			inBuffer[0] = 0;
+			sigSignal(0, mySIGINT);		// interrupt task 0
+			semSignal(inBufferReady);	// SEM_SIGNAL(inBufferReady)
+			break;
+		}
+
+		case 0x17:                                                // ^w
+		{
+			sigSignal(-1, mySIGTSTP);        // stop all tasks
+			break;
+		}
+
+		case 0x12:                                                // ^r
+		{
+			// Resume all tasks
+			sigSignal(-1, mySIGCONT);
+
+			// Clear mySIGSTOP and mySIGTSTP in all tasks
+			for (i = 0; i < MAX_TASKS; i++) {
+				tcb[i].signal &= ~mySIGTSTP;
+				tcb[i].signal &= ~mySIGSTOP;
+			}
+
+			break;
+		}
+
+		case 0x1b:
+		{
+			if (GET_CHAR == 0x5b) {
+				inBuffer[inBufIndx++] = inChar;
+				inBuffer[inBufIndx++] = 0x5b;
+				inBuffer[inBufIndx++] = GET_CHAR;
+				inBuffer[inBufIndx] = 0;
+				inBufIndx = 0;
+				semSignal(inBufferReady);        // SEM_SIGNAL(inBufferReady)
+			}
+			break;
+		}
+
+		default:
+		{
+			inBuffer[inBufIndx++] = inChar;
+			inBuffer[inBufIndx] = 0;
+			printf("%c", inChar);		// echo character
+		}
 		}
 	}
 	else
@@ -144,15 +196,15 @@ static void timer_isr()
 	assert("timer_isr Error" && superMode);
 
 	// capture current time
-  	time(&currentTime);
+	time(&currentTime);
 
-  	// one second timer
-  	if ((currentTime - oldTime1) >= 1)
-  	{
+	// one second timer
+	if ((currentTime - oldTime1) >= 1)
+	{
 		// signal 1 second
-  	   semSignal(tics1sec);
+		semSignal(tics1sec);
 		oldTime1 += 1;
-  	}
+	}
 
 	// sample fine clock
 	myClkTime = clock();

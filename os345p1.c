@@ -46,17 +46,26 @@ typedef struct								// command struct
 //
 extern long swapCount;					// number of scheduler cycles
 extern char inBuffer[];					// character input buffer
+extern int inBufIndx;
 extern Semaphore* inBufferReady;		// input buffer ready semaphore
 extern bool diskMounted;				// disk has been mounted
 extern char dirPath[];					// directory path
 Command** commands;						// shell commands
 
 
+#define MAX_HISTORY_ENTRIES 10
+char* history[MAX_HISTORY_ENTRIES];                // Circular array of inBuffer history
+int lastCommandIndx;
+
 // ***********************************************************************
 // project 1 prototypes
 Command** P1_init(void);
 Command* newCommand(char*, char*, int (*func)(int, char**), char*);
 
+void sigIntHandler(void);
+void sigTermHandler(void);
+void sigTstpHandler(void);
+void sigContHandler(void);
 
 // ***********************************************************************
 // myShell - command line interpreter
@@ -74,6 +83,7 @@ Command* newCommand(char*, char*, int (*func)(int, char**), char*);
 int P1_shellTask(int argc, char* argv[])
 {
 	int i, found, newArgc;					// # of arguments
+	int promptCommand = -1;
 	char** newArgv;							// pointers to arguments
 	static char* argvStrings;
 
@@ -81,16 +91,39 @@ int P1_shellTask(int argc, char* argv[])
 	// initialize shell commands
 	commands = P1_init();					// init shell commands
 
-	//sigAction(mySIGINTHandler, mySIGINT);
+	// Set up signal handlers
+	sigAction(&sigIntHandler, mySIGINT);
+	sigAction(&sigTermHandler, mySIGTERM);
+	sigAction(&sigTstpHandler, mySIGTSTP);
+	sigAction(&sigContHandler, mySIGCONT);
 
 	while (1)
 	{
 		// output prompt
+
+		if (promptCommand >= 0) {
+			printf("\33[2K\r");
+		}
+		else {
+			printf("\n");
+		}
+
+
+
 		if (diskMounted) printf("\n%s>>", dirPath);
 		else printf("\n%ld>>", swapCount);
 
+		if (promptCommand >= 0) {
+		                        printf("%s", history[promptCommand]);
+		                        strcpy(inBuffer, history[promptCommand]);
+		                        inBufIndx = strlen(inBuffer);
+		                }
+
 		SEM_WAIT(inBufferReady);			// wait for input buffer semaphore
-		if (!inBuffer[0]) continue;		// ignore blank lines
+		if (!inBuffer[0]) {
+			promptCommand = -1;
+			continue;		// ignore blank lines
+		}
 		// printf("%s", inBuffer);
 
 		SWAP										// do context switch
@@ -99,75 +132,170 @@ int P1_shellTask(int argc, char* argv[])
 			// ?? >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 			// ?? parse command line into argc, argv[] variables
 			// ?? must use malloc for argv storage!
-			static char *sp, *myArgv[MAX_ARGS];
+			static char *sp;//, *myArgv[MAX_ARGS];
 
 
 			// Allocate space for strings
 			argvStrings = (char*) malloc(sizeof(char) * (strlen(inBuffer) + 1));
 			strcpy(argvStrings, inBuffer);
-			//newArgv = (char**) malloc(sizeof(char*) * MAX_ARGS);
+			newArgv = (char**) malloc(sizeof(char*) * MAX_ARGS);
 
 			// init arguments
 			newArgc = 1;
-			myArgv[0] = sp = inBuffer;				// point to input string
+			newArgv[0] = sp = inBuffer;				// point to input string
+			for (i=0; sp[i] && sp[i] != ' '; i++)
+				sp[i] = tolower(sp[i]);
+
 			for (i=1; i<MAX_ARGS; i++)
-				myArgv[i] = 0;
+				newArgv[i] = 0;
 
 			// parse input string
 			while ((sp = strchr(sp, ' ')))
 			{
 				*sp++ = 0;
-				myArgv[newArgc++] = sp;
+				newArgv[newArgc++] = sp;
 			}
-			newArgv = myArgv;
+//			newArgv = myArgv;
 		}	// ?? >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
 		// look for command
-		for (found = i = 0; i < NUM_COMMANDS; i++)
-		{
-			if (!strcmp(newArgv[0], commands[i]->command) ||
-				 !strcmp(newArgv[0], commands[i]->shortcut))
+		//		for (found = i = 0; i < NUM_COMMANDS; i++)
+		//		{
+		//			if (!strcmp(newArgv[0], commands[i]->command) ||
+		//					!strcmp(newArgv[0], commands[i]->shortcut))
+		//			{
+		//				// command found
+		//				int retValue = (*commands[i]->func)(newArgc, newArgv);
+		//				if (retValue) printf("\nCommand Error %d", retValue);
+		//				found = TRUE;
+		//				break;
+		//			}
+		//		}
+		//		if (!found)	printf("\nInvalid command!");
+
+		int len;
+		len = strlen(inBuffer);
+		found = FALSE;
+
+		// Check for up/down arrow
+		if (inBuffer[len-3] == 0x1b && inBuffer[len-2] == 0x5b) {
+			int next;
+
+			switch (inBuffer[len-1]) {
+			case 0x41:        // Up
 			{
-				// command found
-				int retValue = (*commands[i]->func)(newArgc, newArgv);
-				if (retValue) printf("\nCommand Error %d", retValue);
+				// Go back in history
+				if (promptCommand < 0) {
+					next = lastCommandIndx;
+				}
+				else {
+					next = (promptCommand - 1);
+					if (next < 0) next = MAX_HISTORY_ENTRIES - 1;
+				}
+
+				if (history[next]) {
+					promptCommand = next;
+				}
+
 				found = TRUE;
 				break;
 			}
+
+			case 0x42:        // Down
+			{
+				// Go forward in history
+				if (promptCommand < 0) {
+					next = lastCommandIndx;
+				} else {
+					next = (promptCommand + 1) % MAX_HISTORY_ENTRIES;
+				}
+
+				if (history[next]) {
+					promptCommand = next;
+				}
+
+				found = TRUE;
+				break;
+			}
+			default:
+			{
+				// Clear promptWithCommand
+				promptCommand = -1;
+			}
+			}
 		}
-		if (!found)	printf("\nInvalid command!");
+		else {
+			// Store in history
+			lastCommandIndx = (lastCommandIndx + 1) % MAX_HISTORY_ENTRIES;
+			if (history[lastCommandIndx]) {
+				free(history[lastCommandIndx]);
+			}
+			history[lastCommandIndx] = (char*) malloc(sizeof(char) * (strlen(inBuffer) + 1));
+			strcpy(history[lastCommandIndx], inBuffer);
+
+			// Clear promptWithCommand
+			promptCommand = -1;
+
+			// look for command
+			for (i = 0; i < NUM_COMMANDS; i++)
+			{
+				if (!strcmp(newArgv[0], commands[i]->command) ||
+						!strcmp(newArgv[0], commands[i]->shortcut))
+				{
+					// command found, check for background &
+					if (*newArgv[newArgc-1] == '&') {
+						createTask("BackgroundTask",
+								commands[i]->func,
+								MED_PRIORITY,
+								newArgc - 1,
+								newArgv);
+					}
+					else {
+						int retValue = (*commands[i]->func)(newArgc, newArgv);
+						if (retValue) printf("\nCommand Error %d", retValue);
+					}
+
+					found = TRUE;
+					break;
+				}
+			}
+		}
+		if (!found)        printf("\nInvalid command!");
 
 		// ?? free up any malloc'd argv parameters
-		//free(newArgv);
+		free(newArgv);
 		free(argvStrings);
 
 		for (i=0; i<INBUF_SIZE; i++) inBuffer[i] = 0;
+
 	}
+		 // Free history
+		for (i = 0; i < MAX_HISTORY_ENTRIES; i++) {
+				if (history[i]) free(history[i]);
+		}
 	return 0;						// terminate task
 } // end P1_shellTask
 
 
-void mySIGINTHandler(void)
-{
-        sigSignal(-1, mySIGTERM);
-        return;
-}
+// ***********************************************************************
+// ***********************************************************************
+// Signal Handlers
+//
+void sigIntHandler(void) {
+	sigSignal(-1, mySIGTERM);
+} // end sigIntHandler
 
-void mySIGTSTPHandler(void)
-{
-        sigSignal(-1, mySIGSTOP);
-        return;
-}
+void sigTermHandler(void) {
+} // end sigTermHandler
 
-void mySIGCONTHandler(void)
-{
-        return;
-}
+void sigTstpHandler(void) {
+	sigSignal(-1, mySIGSTOP);
+} // end sigTstpHandler
 
-//void mySIGTERMHandler(void)
-//{
-//        killTask(curTask);
-//}
+void sigContHandler(void) {
+	return;
+} // end sigContHandler
+
 
 // ***********************************************************************
 // ***********************************************************************
@@ -222,27 +350,27 @@ int P1_lc3(int argc, char* argv[])
 //
 int P1_add(int argc, char* argv[])
 {
-        if(argc <= 1) {
-                printf("\nUsage: add NUMBERS...\nAdd together all NUMBER(s)"
-                                " in decimal or hex format.");
-                return 0;
-        }
-        SWAP
-        int i;
-        int answer = 0;
-        for ( i = 1 ; i < argc ; i++) {
-                int toAdd = 0;
-                if(argv[i][0] == '0' && argv[i][1] == 'x') {
-                        // hex
-                        toAdd = (int)strtol(argv[i], NULL, 0);
-                } else {
-                        // decimal
-                        toAdd = atoi(argv[i]);
-                }
-                answer += toAdd;
-        }
-        printf("\n\tAnswer = %d",answer);
-        return 0;
+	if(argc <= 1) {
+		printf("\nUsage: add NUMBERS...\nAdd together all NUMBER(s)"
+				" in decimal or hex format.");
+		return 0;
+	}
+	SWAP
+	int i;
+	int answer = 0;
+	for ( i = 1 ; i < argc ; i++) {
+		int toAdd = 0;
+		if(argv[i][0] == '0' && argv[i][1] == 'x') {
+			// hex
+			toAdd = (int)strtol(argv[i], NULL, 0);
+		} else {
+			// decimal
+			toAdd = atoi(argv[i]);
+		}
+		answer += toAdd;
+	}
+	printf("\n\tAnswer = %d",answer);
+	return 0;
 }
 
 
@@ -252,16 +380,16 @@ int P1_add(int argc, char* argv[])
 //
 int P1_args(int argc, char* argv[])
 {
-        if(argc <= 1) {
-                printf("\nUsage: args ARUMENTS...\nLists argument(s).");
-                return 0;
-        }
-        SWAP
-        int i;
-        for ( i = 1 ; i < argc ; i++) {
-                printf("\n\tArgument [%d] - %s",i,argv[i]);
-        }
-        return 0;
+	if(argc <= 1) {
+		printf("\nUsage: args ARUMENTS...\nLists argument(s).");
+		return 0;
+	}
+	SWAP
+	int i;
+	for ( i = 1 ; i < argc ; i++) {
+		printf("\n\tArgument [%d] - %s",i,argv[i]);
+	}
+	return 0;
 }
 
 // **************************************************************************
@@ -270,19 +398,19 @@ int P1_args(int argc, char* argv[])
 //
 int P1_date_time(int argc, char* argv[])
 {
-        if(argc != 1) {
-                if(argv[0][0] == 'd')
-                        printf("\nUsage: date\nOutput current system date and time.");
-                else
-                        printf("\nUsage: time\nOutput current system date and time.");
-                return 0;
-        }
-        SWAP
-        char * time = malloc(sizeof(char) * INBUF_SIZE);
-        myTime(time);
-        printf("\n\tThe current time is: %s",time);
-        free(time);
-        return 0;
+	if(argc != 1) {
+		if(argv[0][0] == 'd')
+			printf("\nUsage: date\nOutput current system date and time.");
+		else
+			printf("\nUsage: time\nOutput current system date and time.");
+		return 0;
+	}
+	SWAP
+	char * time = malloc(sizeof(char) * INBUF_SIZE);
+	myTime(time);
+	printf("\n\tThe current time is: %s",time);
+	free(time);
+	return 0;
 }
 
 // ***********************************************************************
@@ -348,7 +476,7 @@ Command** P1_init()
 	commands[i++] = newCommand("lc3", "lc3", P1_lc3, "Execute LC3 program");
 	commands[i++] = newCommand("add", "add", P1_add, "Add all arguments together");
 	commands[i++] = newCommand("args", "ar", P1_args, "List all parameters on the command line, numbers or strings.");
-    commands[i++] = newCommand("date", "time", P1_date_time, "Output current system date and time.");
+	commands[i++] = newCommand("date", "time", P1_date_time, "Output current system date and time.");
 
 	// P2: Tasking
 	commands[i++] = newCommand("project2", "p2", P2_project2, "P2: Tasking");
@@ -379,8 +507,8 @@ Command** P1_init()
 
 	// P5: Scheduling
 	commands[i++] = newCommand("project5", "p5", P5_project5, "P5: Scheduling");
-//	commands[i++] = newCommand("stress1", "t1", P5_stress1, "ATM stress test1");
-//	commands[i++] = newCommand("stress2", "t2", P5_stress2, "ATM stress test2");
+	//	commands[i++] = newCommand("stress1", "t1", P5_stress1, "ATM stress test1");
+	//	commands[i++] = newCommand("stress2", "t2", P5_stress2, "ATM stress test2");
 
 	// P6: FAT
 	commands[i++] = newCommand("project6", "p6", P6_project6, "P6: FAT");
