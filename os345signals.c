@@ -40,8 +40,23 @@ int signals(void)
 	{
 		if (tcb[curTask].signal & mySIGINT)
 		{
-			tcb[curTask].signal &= ~mySIGINT;
-			(*tcb[curTask].sigIntHandler)();
+				tcb[curTask].signal &= ~mySIGINT;
+				(*tcb[curTask].sigIntHandler)();
+		}
+		else if (tcb[curTask].signal & mySIGCONT)
+		{
+				tcb[curTask].signal &= ~mySIGCONT;
+				(*tcb[curTask].sigContHandler)();
+		}
+		else if (tcb[curTask].signal & mySIGTERM)
+		{
+				tcb[curTask].signal &= ~mySIGTERM;
+				(*tcb[curTask].sigTermHandler)();
+		}
+		else if (tcb[curTask].signal & mySIGTSTP)
+		{
+				tcb[curTask].signal &= ~mySIGTSTP;
+				(*tcb[curTask].sigTstpHandler)();
 		}
 	}
 	return 0;
@@ -56,11 +71,28 @@ int sigAction(void (*sigHandler)(void), int sig)
 {
 	switch (sig)
 	{
+		case mySIGCONT:
+		{
+				tcb[curTask].sigContHandler = sigHandler;                // mySIGCONT handler
+				return 0;
+		}
 		case mySIGINT:
 		{
-			tcb[curTask].sigIntHandler = sigHandler;		// mySIGINT handler
-			return 0;
+				tcb[curTask].sigIntHandler = sigHandler;                // mySIGINT handler
+				return 0;
 		}
+
+		case mySIGTERM:
+		{
+				tcb[curTask].sigTermHandler = sigHandler;                // mySIGTERM handler
+				return 0;
+		}
+		case mySIGTSTP:
+		{
+				tcb[curTask].sigIntHandler = sigHandler;                // mySIGTSTP handler
+				return 0;
+		}
+
 	}
 	return 1;
 }
@@ -97,12 +129,34 @@ int sigSignal(int taskId, int sig)
 // **********************************************************************
 //	Default signal handlers
 //
-void defaultSigIntHandler(void)			// task mySIGINT handler
+// **********************************************************************
+// **********************************************************************
+
+void defaultSigIntHandler(void)                        // task mySIGINT handler
 {
-	printf("\ndefaultSigIntHandler");
-	return;
+        //        printf("\ndefaultSigIntHandler");
+        sigSignal(-1, mySIGTERM);
+        return;
 }
 
+void defaultSigContHandler(void)                        // task mySIGICONT handler
+{
+        //        printf("\ndefaultSigContHandler");
+        return;
+}
+
+void defaultSigTermHandler(void)                        // task mySIGTERM handler
+{
+        //        printf("\ndefaultSigTermHandler");
+        killTask(curTask);
+        return;
+}
+void defaultSigTstpHandler(void)                        // task mySIG handler
+{
+        //        printf("\ndefaultSigTstpHandler");
+        sigSignal(-1, mySIGSTOP);
+        return;
+}
 
 void createTaskSigHandlers(int tid)
 {
@@ -110,11 +164,19 @@ void createTaskSigHandlers(int tid)
 	if (tid)
 	{
 		// inherit parent signal handlers
-		tcb[tid].sigIntHandler = tcb[curTask].sigIntHandler;			// mySIGINT handler
+		tcb[tid].sigContHandler = tcb[curTask].sigContHandler;                        // task mySIGCONT handler
+		tcb[tid].sigIntHandler = tcb[curTask].sigIntHandler;                        // mySIGINT handler
+		tcb[tid].sigTermHandler = tcb[curTask].sigTermHandler;                        // task mySIGTERM handler
+		tcb[tid].sigTstpHandler = tcb[curTask].sigTstpHandler;                        // task mySIGTSTP handler
+
 	}
 	else
 	{
 		// otherwise use defaults
-		tcb[tid].sigIntHandler = defaultSigIntHandler;			// task mySIGINT handler
+		tcb[tid].sigContHandler = defaultSigContHandler;                        // task mySIGINT handler
+		tcb[tid].sigIntHandler = defaultSigIntHandler;                        // task mySIGINT handler
+		tcb[tid].sigTermHandler = defaultSigTermHandler;                        // task mySIGINT handler
+		tcb[tid].sigTstpHandler = defaultSigTstpHandler;                        // task mySIGINT handler
+
 	}
 }

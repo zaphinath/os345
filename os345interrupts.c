@@ -106,73 +106,73 @@ static void keyboard_isr()
 	{
 		switch (inChar)
 		{
-		case '\r':
-		case '\n':
-		{
-			inBufIndx = 0;				// EOL, signal line ready
-			semSignal(inBufferReady);	// SIGNAL(inBufferReady)
-			break;
-		}
-
-		// Backspace
-		case 0x7f:
-		{
-			if (inBufIndx > 0) {
-				inBufIndx--;
-				inBuffer[inBufIndx] = 0;
-				printf("\b \b");                // remove last character
-			}
-			break;
-		}
-
-		case 0x18:						// ^x
-		{
-			inBufIndx = 0;
-			inBuffer[0] = 0;
-			sigSignal(0, mySIGINT);		// interrupt task 0
-			semSignal(inBufferReady);	// SEM_SIGNAL(inBufferReady)
-			break;
-		}
-
-		case 0x17:                                                // ^w
-		{
-			sigSignal(-1, mySIGTSTP);        // stop all tasks
-			break;
-		}
-
-		case 0x12:                                                // ^r
-		{
-			// Resume all tasks
-			sigSignal(-1, mySIGCONT);
-
-			// Clear mySIGSTOP and mySIGTSTP in all tasks
-			for (i = 0; i < MAX_TASKS; i++) {
-				tcb[i].signal &= ~mySIGTSTP;
-				tcb[i].signal &= ~mySIGSTOP;
+			case '\r':
+			case '\n':
+			{
+				inBufIndx = 0;				// EOL, signal line ready
+				semSignal(inBufferReady);	// SIGNAL(inBufferReady)
+				break;
 			}
 
-			break;
-		}
+			// Backspace
+			case 0x7f:
+			{
+				if (inBufIndx > 0) {
+					inBufIndx--;
+					inBuffer[inBufIndx] = 0;
+					printf("\b \b");                // remove last character
+				}
+				break;
+			}
 
-		case 0x1b:
-		{
-			if (GET_CHAR == 0x5b) {
-				inBuffer[inBufIndx++] = inChar;
-				inBuffer[inBufIndx++] = 0x5b;
-				inBuffer[inBufIndx++] = GET_CHAR;
-				inBuffer[inBufIndx] = 0;
+			case 0x18:						// ^x
+			{
 				inBufIndx = 0;
-				semSignal(inBufferReady);        // SEM_SIGNAL(inBufferReady)
+				inBuffer[0] = 0;
+				sigSignal(0, mySIGINT);		// interrupt task 0
+				semSignal(inBufferReady);	// SEM_SIGNAL(inBufferReady)
+				break;
 			}
-			break;
-		}
 
-		default:
-		{
-			inBuffer[inBufIndx++] = inChar;
-			inBuffer[inBufIndx] = 0;
-			printf("%c", inChar);		// echo character
-		}
+			case 0x17:                                                // ^w
+			{
+				sigSignal(-1, mySIGTSTP);        // stop all tasks
+				break;
+			}
+
+			case 0x12:                                                // ^r
+			{
+				// Resume all tasks
+				sigSignal(-1, mySIGCONT);
+
+				// Clear mySIGSTOP and mySIGTSTP in all tasks
+				for (i = 0; i < MAX_TASKS; i++) {
+					tcb[i].signal &= ~mySIGTSTP;
+					tcb[i].signal &= ~mySIGSTOP;
+				}
+
+				break;
+			}
+
+			case 0x1b:
+			{
+				if (GET_CHAR == 0x5b) {
+					inBuffer[inBufIndx++] = inChar;
+					inBuffer[inBufIndx++] = 0x5b;
+					inBuffer[inBufIndx++] = GET_CHAR;
+					inBuffer[inBufIndx] = 0;
+					inBufIndx = 0;
+					semSignal(inBufferReady);        // SEM_SIGNAL(inBufferReady)
+				}
+				break;
+			}
+
+			default:
+			{
+				inBuffer[inBufIndx++] = inChar;
+				inBuffer[inBufIndx] = 0;
+				printf("%c", inChar);		// echo character
+			}
 		}
 	}
 	else

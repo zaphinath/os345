@@ -92,10 +92,10 @@ int P1_shellTask(int argc, char* argv[])
 	commands = P1_init();					// init shell commands
 
 	// Set up signal handlers
-	sigAction(&sigIntHandler, mySIGINT);
-	sigAction(&sigTermHandler, mySIGTERM);
-	sigAction(&sigTstpHandler, mySIGTSTP);
-	sigAction(&sigContHandler, mySIGCONT);
+//	sigAction(&sigIntHandler, mySIGINT);
+//	sigAction(&sigTermHandler, mySIGTERM);
+//	sigAction(&sigTstpHandler, mySIGTSTP);
+//	sigAction(&sigContHandler, mySIGCONT);
 
 	while (1)
 	{
@@ -114,10 +114,10 @@ int P1_shellTask(int argc, char* argv[])
 		else printf("\n%ld>>", swapCount);
 
 		if (promptCommand >= 0) {
-		                        printf("%s", history[promptCommand]);
-		                        strcpy(inBuffer, history[promptCommand]);
-		                        inBufIndx = strlen(inBuffer);
-		                }
+			printf("%s", history[promptCommand]);
+			strcpy(inBuffer, history[promptCommand]);
+			inBufIndx = strlen(inBuffer);
+		}
 
 		SEM_WAIT(inBufferReady);			// wait for input buffer semaphore
 		if (!inBuffer[0]) {
@@ -152,10 +152,34 @@ int P1_shellTask(int argc, char* argv[])
 			// parse input string
 			while ((sp = strchr(sp, ' ')))
 			{
-				*sp++ = 0;
-				newArgv[newArgc++] = sp;
+//				*sp++ = 0;
+//				newArgv[newArgc++] = sp;
+				*sp = 0;
+				sp++;
+
+				if (*sp == '\'') {
+						newArgv[newArgc] = sp+1;
+						newArgc++;
+						sp = strchr(sp+1, '\'');
+						*sp = 0;
+						sp++;
+				}
+				else if (*sp == '"') {
+						newArgv[newArgc] = sp+1;
+						newArgc++;
+						sp = strchr(sp+1, '"');
+						*sp = 0;
+						sp++;
+				}
+				else {
+						for (i=0; sp[i] && sp[i] != ' '; i++) {
+								sp[i] = tolower(sp[i]);
+						}
+						newArgv[newArgc] = sp;
+						newArgc++;
+				}
 			}
-//			newArgv = myArgv;
+			//			newArgv = myArgv;
 		}	// ?? >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
 		// look for command
@@ -180,48 +204,48 @@ int P1_shellTask(int argc, char* argv[])
 		// Check for up/down arrow
 		if (inBuffer[len-3] == 0x1b && inBuffer[len-2] == 0x5b) {
 			int next;
-
+			printf("%x", inBuffer[len-1]);
 			switch (inBuffer[len-1]) {
-			case 0x41:        // Up
-			{
-				// Go back in history
-				if (promptCommand < 0) {
-					next = lastCommandIndx;
-				}
-				else {
-					next = (promptCommand - 1);
-					if (next < 0) next = MAX_HISTORY_ENTRIES - 1;
-				}
+				case 0x61:        // Up
+				{
+					// Go back in history
+					if (promptCommand < 0) {
+						next = lastCommandIndx;
+					}
+					else {
+						next = (promptCommand - 1);
+						if (next < 0) next = MAX_HISTORY_ENTRIES - 1;
+					}
 
-				if (history[next]) {
-					promptCommand = next;
-				}
+					if (history[next]) {
+						promptCommand = next;
+					}
 
-				found = TRUE;
-				break;
-			}
-
-			case 0x42:        // Down
-			{
-				// Go forward in history
-				if (promptCommand < 0) {
-					next = lastCommandIndx;
-				} else {
-					next = (promptCommand + 1) % MAX_HISTORY_ENTRIES;
+					found = TRUE;
+					break;
 				}
 
-				if (history[next]) {
-					promptCommand = next;
-				}
+				case 0x62:        // Down
+				{
+					// Go forward in history
+					if (promptCommand < 0) {
+						next = lastCommandIndx;
+					} else {
+						next = (promptCommand + 1) % MAX_HISTORY_ENTRIES;
+					}
 
-				found = TRUE;
-				break;
-			}
-			default:
-			{
-				// Clear promptWithCommand
-				promptCommand = -1;
-			}
+					if (history[next]) {
+						promptCommand = next;
+					}
+
+					found = TRUE;
+					break;
+				}
+				default:
+				{
+					// Clear promptWithCommand
+					promptCommand = -1;
+				}
 			}
 		}
 		else {
@@ -269,10 +293,10 @@ int P1_shellTask(int argc, char* argv[])
 		for (i=0; i<INBUF_SIZE; i++) inBuffer[i] = 0;
 
 	}
-		 // Free history
-		for (i = 0; i < MAX_HISTORY_ENTRIES; i++) {
-				if (history[i]) free(history[i]);
-		}
+	// Free history
+	for (i = 0; i < MAX_HISTORY_ENTRIES; i++) {
+		if (history[i]) free(history[i]);
+	}
 	return 0;						// terminate task
 } // end P1_shellTask
 
@@ -286,6 +310,7 @@ void sigIntHandler(void) {
 } // end sigIntHandler
 
 void sigTermHandler(void) {
+	printf("MRT");
 } // end sigTermHandler
 
 void sigTstpHandler(void) {
@@ -419,17 +444,58 @@ int P1_date_time(int argc, char* argv[])
 //
 int P1_help(int argc, char* argv[])
 {
-	int i;
+//	int i;
+//
+//	// list commands
+//	for (i = 0; i < NUM_COMMANDS; i++)
+//	{
+//		SWAP										// do context switch
+//		if (strstr(commands[i]->description, ":")) printf("\n");
+//		printf("\n%4s: %s", commands[i]->shortcut, commands[i]->description);
+//	}
+//
+//	return 0;
 
-	// list commands
-	for (i = 0; i < NUM_COMMANDS; i++)
-	{
-		SWAP										// do context switch
-		if (strstr(commands[i]->description, ":")) printf("\n");
-		printf("\n%4s: %s", commands[i]->shortcut, commands[i]->description);
-	}
+	  int i, found;
+	        char startFlag[8] = "";
 
-	return 0;
+	        // Check for given project argument
+	        if (argc > 1) {
+	                // List commands for given project
+	                found = FALSE;
+	                strcpy(startFlag, argv[1]);
+	                printf("\r\n%s", startFlag);
+
+	                // Find first command for project
+	                for (i = 0; i < NUM_COMMANDS; i++)
+	                {
+	                        SWAP                                                                                // do context switch
+	                        if (strstr(commands[i]->command, startFlag)) {
+	                                found = TRUE;
+	                                break;
+	                        }
+	                }
+
+	                if (found) {
+	                        // List commands until next project
+	                        printf("\n%4s: %s", commands[i]->shortcut, commands[i]->description);
+//	                        for (i++; i < NUM_COMMANDS; i++) {
+//	                                if (strstr(commands[i]->description, ":")) break;
+//	                                printf("\n%4s: %s", commands[i]->shortcut, commands[i]->description);
+//	                        }
+	                }
+	        }
+	        else {
+	                // list all commands
+	                for (i = 0; i < NUM_COMMANDS; i++)
+	                {
+	                        SWAP                                                                                // do context switch
+	                        if (strstr(commands[i]->description, ":")) printf("\n");
+	                        printf("\n%4s: %s", commands[i]->shortcut, commands[i]->description);
+	                }
+	        }
+
+	        return 0;
 } // end P1_help
 
 

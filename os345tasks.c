@@ -114,6 +114,8 @@ int createTask(char* name,						// task name
 static void exitTask(int taskId);
 int killTask(int taskId)
 {
+	int tid, i;
+	char** argv;
 	if (taskId != 0)			// don't terminate shell
 	{
 		if (taskId < 0)			// kill all tasks
@@ -121,14 +123,26 @@ int killTask(int taskId)
 			int tid;
 			for (tid = 1; tid < MAX_TASKS; tid++)
 			{
-				if (tcb[tid].name) exitTask(tid);
+				if (tcb[tid].name)
+					exitTask(tid);
+				argv = tcb[taskId].argv;
+				for (i = 0; i < tcb[taskId].argc && argv[i]; i++) {
+					free(argv[i]);
+				}
+				free(argv);
 			}
 		}
 		else
 		{
 			// terminate individual task
-			if (!tcb[taskId].name) return 1;
+			if (!tcb[taskId].name)
+				return 1;
 			exitTask(taskId);	// kill individual task
+			argv = tcb[taskId].argv;
+			for (i = 0; i < tcb[taskId].argc && argv[i]; i++) {
+				free(argv[i]);
+			}
+			free(argv);
 		}
 	}
 	if (!superMode) SWAP;
